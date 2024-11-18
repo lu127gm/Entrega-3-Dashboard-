@@ -1,0 +1,301 @@
+---
+title: "Impacto del IDH, Barrera de género, Alfabetización femenina y Democracia en la tasa de paz y seguridad para las mujeres"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    vertical_layout: fill
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(ggcorrplot)
+library(readxl)
+library(DescTools)
+library(modelsummary)
+library(ggplot2)
+library(sjPlot)
+library(magrittr)
+library(knitr)
+library(polycor)
+library(psych)
+library(cluster)
+library(factoextra)
+library(kableExtra)
+dataest <- read_excel("dataest.xlsx")
+```
+
+# ANÁLISIS DE VARIABLES
+
+{data-width=700}
+-----------------------------------------------------------------------
+
+### Estadígrafos variable dependiente (WPSindex)
+```{r}
+allStats=c(summary(dataest$WPSindex),
+  sd=sd(dataest$WPSindex),
+  skew=Skew(dataest$WPSindex),
+  kurt=Kurt(dataest$WPSindex),
+  cv=CoefVar(dataest$WPSindex))
+allStats
+```
+
+### Correlación entre las variables
+```{r}
+colNums=names(dataest)[c(2,3,4,5,6)]
+numXs=dataest[,colNums]
+ggcorrplot(cor(numXs),lab = T,show.diag = F)
+```
+
+{data-width=400}
+-----------------------------------------------------------------------
+#### Histograma WPSindex
+```{r}
+base=ggplot(data=dataest,
+            aes(x=WPSindex))
+histogram= base + geom_histogram(aes(y = after_stat(density)),
+                 colour = 1, fill = "lightgreen",bins=10) +  
+    stat_function(fun = dnorm,
+                  args = list(mean = allStats['Mean'],
+                              sd = allStats['sd']),col='red')
+    
+histogram
+```
+
+
+
+
+
+Column {data-width=350}
+-----------------------------------------------------------------------
+
+# REGRESIÓN GAUSSIANA 
+
+#### REGRESIÓN Y MODELOS
+
+
+{data-width=500} {.tabset}
+-----------------------------------------------------------------------
+
+### MODELO 1 
+
+```{r}
+modelo1=formula(WPSindex~IDH + pobreza)
+reg1=lm(modelo1,data = dataest)
+modelo1=list('Regresión (I)'=reg1)
+modelsummary(modelo1, title = "Regresion: modelo 1",
+             stars = TRUE,
+             output = "kableExtra")
+```
+
+### MODELO 2
+
+```{r}
+modelo2=formula(WPSindex~IDH + democracia + pobreza)
+reg2=lm(modelo2,data = dataest)
+modelo2=list('Regresión (II)'=reg2)
+modelsummary(modelo2, title = "Regresion: modelo 2",
+             stars = TRUE,
+             output = "kableExtra")
+```
+
+### MODELO 3
+
+```{r}
+modelo3=formula(WPSindex~IDH + democracia + brecha_gen + pobreza)
+reg3=lm(modelo3,data = dataest)
+modelo3=list('Regresión (III)'=reg3)
+modelsummary(modelo3, title = "Regresion: modelo 3",
+             stars = TRUE,
+             output = "kableExtra")
+```
+
+### MODELO 4
+```{r}
+modelo4=formula(WPSindex~IDH + democracia + brecha_gen + alf_fem + pobreza)
+reg4=lm(modelo4,data = dataest)
+modelo4=list('Regresión (IV)'=reg4)
+modelsummary(modelo4, title = "Regresion: modelo 4",
+             stars = TRUE,
+             output = "kableExtra")
+```
+
+{data-width=500}
+-----------------------------------------------------------------------
+
+### SELECCIÓN DE MODELOS
+```{r}
+models=list('apropiacion (I)'=reg1,
+            'apropiacion (II)'=reg2,
+            'apropiacion (III)'=reg3,
+            'apropiacion (IV)'=reg4)
+modelsummary(models, title = "Resultados de todos los modelos", statistic = "conf.int",
+             stars = TRUE,
+             output = "kableExtra")
+```
+
+
+# ANÁLISIS DE MODELOS DE REGRESIÓN (ANOVA)
+
+{data-width=500}
+-----------------------------------------------------------------------
+### COMPARACIÓN DE MODELOS
+```{r}
+plot_models(reg1,reg2,reg3,reg4,vline.color = "black",m.labels=c("Modelo 1","Modelo 2","Modelo 3","Modelo 4"),dot.size = 1,line.size = 0.6)
+```
+
+{data-width=500}
+-----------------------------------------------------------------------
+### TABLA ANOVA MODELOS
+
+```{r}
+tanova=anova(reg1,reg2,reg3,reg4)
+
+kable(tanova,
+      caption = "Tabla ANOVA para comparar modelos")%>%kableExtra::kable_styling(full_width = FALSE)
+```
+
+
+
+# ANÁLISIS FACTORIAL EXPLORATORIO (EFA)
+
+
+```{r}
+dontselect=c("País","pobreza")
+select=setdiff(names(dataest),dontselect) 
+theData=dataest[,select]
+```
+```{r}
+corMatrix <- cor(theData, use = "pairwise.complete.obs")
+```
+
+
+{data-width=250} {.tabset}
+-----------------------------------------------------------------------
+### MATRIZ DE CORRELACIONES
+
+```{r}
+ggcorrplot(corMatrix)
+```
+
+### RESULTADO DE LA MATRIZ
+
+```{r}
+round(corMatrix,2)
+```
+
+Column {data-width=500}
+-----------------------------------------------------------------------
+### PRUEBA KMO
+
+```{r}
+psych::KMO(corMatrix) 
+```
+
+```{r}
+library(GPArotation)
+resfa <- fa(theData,
+            nfactors = 3, #número de factores
+            cor = 'mixed',
+            rotate = "varimax",
+            fm="minres")
+```
+
+### RESULTADOS DEL EFA
+```{r}
+fa.diagram(resfa,main = "Resultados del EFA")
+```
+
+# ANÁLISIS DE CONGLOMERADOS (CLUSTERS)
+
+```{r}
+dataClus=dataest[,c(2:6)]
+row.names(dataClus)=dataest$País
+```
+
+```{r}
+g.dist = daisy(dataClus, metric="gower")
+```
+{data-width=250} {.tabset}
+-----------------------------------------------------------------------
+### PAM
+```{r}
+fviz_nbclust(dataClus, pam,diss=g.dist,method = "gap_stat",k.max = 10,verbose = F)
+```
+
+```{r}
+set.seed(123)
+res.pam=pam(g.dist,3,cluster.only = F)
+
+dataClus$pam=res.pam$cluster
+```
+
+### Silhouette PAM
+```{r}
+fviz_silhouette(res.pam,print.summary = F)
+```
+
+
+{data-width=250} {.tabset}
+-----------------------------------------------------------------------
+
+### AGNES
+```{r}
+fviz_nbclust(dataClus, hcut,diss=g.dist,method = "gap_stat",k.max = 10,verbose = F,hc_func = "agnes")
+```
+
+```{r}
+set.seed(123)
+library(factoextra)
+
+res.agnes<- hcut(g.dist, k = 3,hc_func='agnes',hc_method = "ward.D")
+
+dataClus$agnes=res.agnes$cluster
+```
+
+### Dendograma AGNES
+```{r}
+fviz_dend(res.agnes, cex = 0.7, horiz = T,main = "")
+```
+
+### Silhouette AGNES
+```{r}
+fviz_silhouette(res.agnes,print.summary = F)
+```
+
+{data-width=250} {.tabset}
+-----------------------------------------------------------------------
+
+### DIANA
+```{r}
+fviz_nbclust(dataClus, hcut,diss=g.dist,method = "gap_stat",k.max = 10,verbose = F,hc_func = "diana")
+```
+
+```{r}
+set.seed(123)
+res.diana <- hcut(g.dist, k = 4,hc_func='diana')
+dataClus$diana=res.diana$cluster
+```
+
+### Dendograma DIANA
+```{r}
+fviz_dend(res.diana, cex = 0.7, horiz = T, main = "")
+```
+
+### Silhouette DIANA
+```{r}
+fviz_silhouette(res.diana,print.summary = F)
+```
+
+
+# CONCLUSIONES
+
+### Conclusiones finales
+---
+Se observa que las variables independientes IDH y democracia presentan significancia en la variable dependiente WPSindex, lo cual permite analizar que los países con mayor democracia e índice de desarrollo humano presentan un mejor índice de paz y seguridad para las mujeres. Asimismo, la variable de control "pobreza" igual presenta un impacto significativo en la variable dependiente. 
+En cuanto a los modelos, el modelo 3 resultó ser el mejor modelo según la prueba anova realizada, dado que eran modelo anidados, el modelo 3 presentó mayor significancia.
+Por otro lado, la prueba de correlación arrojó que las variables están relacionadas entre sí; sin embargo, no todas tienen un impacto significativo en la variable dependiente. En cuando a la clusterización, se observa que la mejor estrategía de aglomeración es DIANA, dado que presenta el número de clusters de manera más equilibrada a diferencia de la estrategia PAM y AGNES.
+
+A nivel teórico: El Índice de Paz y Seguridad de las Mujeres (WPS Index) aborda diversas dimensiones como inclusión, justicia y seguridad. El IDH y la democracia tienen un mayor impacto dado que capturan condiciones estructurales y de gobernanza que benefician a toda la sociedad, incluidas las mujeres. Un alto IDH significa mejores niveles de desarrollo humano (salud, educación y nivel de vida), mientras que la democracia tiende a garantizar mayor participación, derechos y acceso a recursos. Pese a que el nivel de alfabetización femenina y la brecha de género son variables relevantes, suelen ser consecuencias de estas condiciones estructurales. Países con mejor IDH y democracia ofrecen mayores oportunidades para las mujeres, mientras que aquellos con rezagos en estas áreas enfrentan obstáculos institucionales que limitan el avance de la igualdad de género.
+
+
+
